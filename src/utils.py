@@ -31,8 +31,21 @@ def get_credentials():
             token.write(creds.to_json())
     return creds
 
-def extract_provider_and_model(model_string: str):
+def extract_provider_and_model1(model_string: str):
     return model_string.split("/", 1)
+
+def extract_provider_and_model(model_string: str):
+    parts = model_string.split("/", 1)
+    if len(parts) == 1:
+        llm_provider = parts[0].lower()
+        # map known model strings to their provider
+        if llm_provider in ["gpt-4o", "gpt-3.5-turbo","gpt-4o-mini"]:
+            return "openai", llm_provider
+        elif llm_provider == "openrouter":
+            return "openrouter", "gpt-neo-3.5"
+        else:
+            return llm_provider, None
+    return parts[0].lower(), parts[1]
 
 def get_llm_by_provider(model_string, temperature=0.1):
     llm_provider, model = extract_provider_and_model(model_string)
@@ -50,6 +63,15 @@ def get_llm_by_provider(model_string, temperature=0.1):
         from langchain_groq import ChatGroq
         llm = ChatGroq(model=model, temperature=temperature)
     # ... add elif blocks for other providers ...
+    elif llm_provider == "openrouter":
+        # ✅ New block for OpenRouter
+        from langchain_openai import ChatOpenAI  # OpenRouter compatible via ChatOpenAI wrapper
+        llm = ChatOpenAI(
+            model=model,
+            temperature=temperature,
+            openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+            openai_api_base="https://openrouter.ai/api/v1"
+        )
     else:
         raise ValueError(f"Unsupported LLM provider: {llm_provider}")
     return llm

@@ -1,6 +1,9 @@
+# src/agents/base/agents_orchestrator.py
+
 from pydantic import Field, create_model
 from .agent import Agent
 from src.tools.send_message import SendMessage
+from langchain_core.messages import AIMessage  # <--- IMPORT AIMessage
 
 class AgentsOrchestrator:
     def __init__(self, main_agent: Agent, agents: list[Agent]):
@@ -10,8 +13,29 @@ class AgentsOrchestrator:
 
         # Set up the communication framework
         self._populate_agent_mapping()
+
+        # --- MOCK non-WhatsApp agents (FIXED) ---
+        for agent_name, agent_obj in self.agent_mapping.items():
+            if agent_name.lower() != "whatsapp_agent":
+                # Create a proper synchronous mock function
+                def create_mock_invoke(current_agent):
+                    def mock_invoke(*args, **kwargs):
+                        # Extract the actual message content
+                        messages = kwargs.get("messages", args[0] if args else {"messages": []})
+                        human_message_content = messages["messages"][0][1]
+
+                        # Create a mock AI response
+                        response_content = f"This is a mock response from {current_agent.name}. I received your message: '{human_message_content}'"
+
+                        # ✅ FIX: Return a proper AIMessage object, not a tuple
+                        return {"messages": [AIMessage(content=response_content)]}
+                    return mock_invoke
+
+                # Replace the agent's invoke method with our new mock
+                agent_obj.invoke = create_mock_invoke(agent_obj)
+
         self._add_send_message_tool()
-        
+
     def invoke(self, message, **kwargs):
         messages = {"messages": [("human", message)]}
         response = self.main_agent.invoke(messages, **kwargs)
@@ -23,49 +47,30 @@ class AgentsOrchestrator:
             yield chunk
 
     def _populate_agent_mapping(self):
-        """
-        Populates the agent mapping with agent names as keys and agent objects as values.
-        """
         for agent in self.agents:
             self.agent_mapping[agent.name] = agent
 
     def _create_dynamic_send_message_tool(self, agent: "Agent") -> "SendMessage":
-        """
-        Creates a dynamic send message tool for agents with sub-agents.
-        """
-        # Generate a description for the recipients
         recipients_description = "\n".join(
             f"{sub_agent.name}: {sub_agent.description}"
             for sub_agent in agent.sub_agents
             if sub_agent.description
         )
-
-        # Create a dynamic input schema
         DynamicSendMessageInput = create_model(
             f"{agent.name}SendMessageInput",
             recipient=(str, Field(..., description=recipients_description)),
             message=(str, Field(..., description="Message to send to sub-agent.")),
         )
-
-        # Create the SendMessage tool instance
         send_message_tool = SendMessage(args_schema=DynamicSendMessageInput)
-        send_message_tool.agent_mapping = self.agent_mapping  # Dynamically bind agent_mapping
+        send_message_tool.agent_mapping = self.agent_mapping
         return send_message_tool
 
     def _add_send_message_tool(self):
-        """
-        Adds the send message tool to agents with sub-agents.
-        """
         for agent in self.agents:
             if hasattr(agent, "sub_agents") and agent.sub_agents:
                 send_message_tool = self._create_dynamic_send_message_tool(agent)
                 agent.tools.append(send_message_tool)
-
-                # Bind the new tool to the agent's LLM model
                 agent.initiat_agent()
 
     def get_agent(self, name: str) -> "Agent":
-        """
-        Retrieves an agent from the mapping by name.
-        """
         return self.agent_mapping.get(name)

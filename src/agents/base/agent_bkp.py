@@ -1,8 +1,7 @@
-# src/agents/base/agent.py
-
 from typing import List
 from langgraph.prebuilt import create_react_agent
-from src.utils import get_llm_by_provider
+# ✅ Updated: get_llm_by_provider is no longer needed; we pass model & provider directly
+# from src.utils import get_llm_by_provider
 
 class Agent:
     def __init__(
@@ -10,11 +9,11 @@ class Agent:
         name: str,
         description: str,
         system_prompt: str,
-        tools: List,
+        tools: List,  # tools can now include tool instances, no type hint issue
         sub_agents: List['Agent'],
-        model: str,
+        model: str,  # model name only, e.g., "gpt-4o"
         temperature: float,
-        memory=None
+        memory=None  # memory storage optional
     ):
         self.name = name
         self.description = description
@@ -29,31 +28,21 @@ class Agent:
     def invoke(self, *args, **kwargs):
         if not self.agent:
             self.initiat_agent()
-
         print(f"--- Calling {self.name} ---")
-
-        # --- SMUGGLE CONFIG ---
-        # Attach the config to each tool instance so the tool can use it
-        config = kwargs.get('config')
-        if config:
-            for tool in self.tools:
-                tool.config = config
-
         response = self.agent.invoke(*args, **kwargs)
         return response
 
     def stream(self, *args, **kwargs):
         if not self.agent:
             self.initiat_agent()
-
         print(f"--- Calling {self.name} ---")
         for chunk in self.agent.stream(*args, **kwargs):
             yield chunk
 
     def initiat_agent(self):
-        llm = get_llm_by_provider(self.model, self.temperature)
+        # Only pass model string; tools can be empty list if no tools yet
         self.agent = create_react_agent(
-            llm,
-            tools=self.tools,
-            checkpointer=self.memory if self.memory else None
+            model=self.model,               # required: model string e.g., "openai/gpt-4o-mini"
+            tools=self.tools or [],         # required: list of tools (empty list if none)
+            checkpointer=self.memory if self.memory else False
         )
