@@ -11,23 +11,37 @@ class WhatsAppChannel:
 
     def send_message(self, to_number, body):
         """
-        Sends a WhatsApp message.
+        Sends a WhatsApp message via the Twilio API.
         """
+        # --- DEBUG: Print the numbers to verify format ---
+        from_number = os.getenv('FROM_WHATSAPP_NUMBER')
+        print(f"--- DEBUG: Sending WhatsApp ---")
+        print(f"From: {from_number}")
+        print(f"To (raw): {to_number}")
+
+        # Ensure the 'to' number is prefixed with 'whatsapp:'
+        if not to_number.startswith('whatsapp:'):
+            to_number = f'whatsapp:{to_number}'
+
+        print(f"To (formatted): {to_number}")
+        print(f"Body: {body}")
+        # --- END DEBUG ---
+
         try:
             message = self.client.messages.create(
                 body=body,
-                from_=os.getenv('FROM_WHATSAPP_NUMBER'),  # Should be your Twilio WhatsApp number with 'whatsapp:' prefix
-                to=to_number # Ensure to prefix the number with 'whatsapp:'
+                from_=from_number,
+                to=to_number
             )
+            print(f"--- DEBUG: Message sent successfully with SID: {message.sid} ---")
             return f"Message sent successfully with SID: {message.sid}"
         except Exception as e:
-            return f"Failed to send message: {e}"
+            print(f"!!! ERROR: Failed to send message: {e} !!!")
+            # It's good practice to re-raise the exception so the calling code knows it failed
+            raise e
 
     def receive_messages(self):
         """
         Receiving messages is handled via webhooks.
-
-        This method is not implemented because incoming WhatsApp messages are typically received through a webhook configured in the Twilio account. 
-        The webhook sends an HTTP request to our server when a message is received.
         """
-        pass 
+        pass
